@@ -1,179 +1,143 @@
-import React, { useEffect, useState, useRef } from 'react'
-import { collection, getDocs, doc, setDoc, getDoc, addDoc } from 'firebase/firestore'
-import { db, serverTimestamp } from '../firebase'
-import { auth } from '../firebase'
+import React, { useState, useEffect } from 'react';
+import { db, auth, serverTimestamp } from '../firebase';
+import { collection, getDocs, doc, setDoc, getDoc } from 'firebase/firestore';
 
-const EXAM_DURATION_MS = 6 * 60 * 60 * 1000 // 6 horas
+const EXAM_DURATION_MS = 6*60*60*1000; // 6 horas
 
-export default function Student(){
-  const [questions, setQuestions] = useState([])
-  const [current, setCurrent] = useState(0)
-  const [answers, setAnswers] = useState({})
-  const [startedAt, setStartedAt] = useState(null)
-  const [finished, setFinished] = useState(false)
-  const [score, setScore] = useState(null)
-  const timerRef = useRef(null)
-  const [remaining, setRemaining] = useState(EXAM_DURATION_MS)
+export default function Student() {
+  const [questions, setQuestions] = useState([]);
+  const [current, setCurrent] = useState(0);
+  const [answers, setAnswers] = useState({});
+  const [remaining, setRemaining] = useState(EXAM_DURATION_MS);
+  const [finished, setFinished] = useState(false);
+  const [results, setResults] = useState(null);
 
-  useEffect(() => { loadQuestions() }, [])
-
-  async function loadQuestions(){
-    const snap = await getDocs(collection(db, 'questions'))
-    const qs = snap.docs.map(d => ({ id: d.id, ...d.data() }))
-    setQuestions(qs)
-
-    const uid = auth.currentUser.uid
-    const resultRef = doc(db, 'results', uid)
-    const resSnap = await getDoc(resultRef)
-    if (resSnap.exists()){
-      const data = resSnap.data()
-      if (data.startedAt) {
-        setStartedAt(data.startedAt)
-        if (data.finishedAt) {
-          setFinished(true)
-          setAnswers(data.answers || {})
-          setScore(data.score ?? null)
-        } else {
-          // calcular remaining
-          const elapsed = Date.now() - new Date(data.startedAt).getTime()
-          const rem = Math.max(EXAM_DURATION_MS - elapsed, 0)
-          setRemaining(rem)
-          startTimer(rem)
-        }
-      }
+  // Fetch questions
+  useEffect(() => {
+    async function fetchQuestions() {
+      const snap = await getDocs(collection(db, 'questions'));
+      setQuestions(snap.docs.map(d => ({id:d.id, ...d.data()})));
     }
-  }
+    fetchQuestions();
+  }, []);
 
-  function startTimer(ms){
-    setRemaining(ms)
-    const end = Date.now() + ms
-    timerRef.current = setInterval(() => {
-      const rem = Math.max(end - Date.now(), 0)
-      setRemaining(rem)
-      if (rem <= 0) {
-        clearInterval(timerRef.current)
-        handleSubmit(true)
+  // Start exam timer
+  useEffect(() => {
+    async function initTimer() {
+      const uid = auth.currentUser.uid;
+      const docRef = doc(db, 'results', uid);
+      let snap = await getDoc(docRef);
+      let startedAtMs;
+
+      // Se já existe startedAt válido, usa ele
+      if(snap.exists() && snap.data().startedAt && typeof snap.data().startedAt.toMillis === 'function'){
+        startedAtMs = snap.data().startedAt.toMillis();
+      } else {
+        // Cria startedAt no servidor
+        await setDoc(docRef, { studentId: uid, startedAt: serverTimestamp() }, { merge: true });
+        snap = await getDoc(docRef);
+        startedAtMs = snap.data().startedAt.toMillis();
       }
-    }, 1000)
+
+      const interval = setInterval(() => {
+        const elapsed = Date.now() - startedAtMs;
+        const rem = Math.max(EXAM_DURATION_MS - elapsed, 0);
+        setRemaining(rem);
+        if(rem <= 0){
+          clearInterval(interval);
+          handleFinish();
+        }
+      }, 1000);
+    }
+    initTimer();
+  }, []);
+
+  function formatTime(ms){
+    const h = Math.floor(ms/3600000);
+    const m = Math.floor((ms%3600000)/60000);
+    const s = Math.floor((ms%60000)/1000);
+    return `${h}h ${m}m ${s}s`;
   }
 
-  async function handleStart(){
-    const uid = auth.currentUser.uid
-    const userDocRef = doc(db, 'results', uid)
-    const now = new Date().toISOString()
-    await setDoc(userDocRef, { studentId: uid, studentEmail: auth.currentUser.email, startedAt: now }, { merge: true })
-    setStartedAt(now)
-    startTimer(EXAM_DURATION_MS)
+  function handleAnswer(option){
+    setAnswers({...answers, [questions[current].id]: option});
   }
 
-  function handleSelect(qid, option){
-    setAnswers(a => ({ ...a, [qid]: option }))
+  function handleFinish(){
+    const score = questions.reduce((acc,q)=>acc + (answers[q.id]===q.correct?1:0),0);
+    setResults({score,total:questions.length, answers});
+    setFinished(true);
+
+    // Salva no Firestore
+    setDoc(doc(db,'results',auth.currentUser.uid),{
+      answers,
+      finished:true,
+      score,
+      finishedAt: serverTimestamp()
+    }, {merge:true});
   }
 
-  function goto(i){ if (i>=0 && i<questions.length) setCurrent(i) }
+  if(questions.length===0) return <p>Carregando questões...</p>;
 
-  async function handleSubmit(auto=false){
-    if (finished) return
-    // calcula pontuação
-    let correctCount = 0
-    questions.forEach(q => {
-      const chosen = answers[q.id]
-      if (chosen && chosen === q.correct) correctCount++
-    })
-    const sc = correctCount
-    setScore(sc)
-    setFinished(true)
-    clearInterval(timerRef.current)
-    const uid = auth.currentUser.uid
-    const resultRef = doc(db, 'results', uid)
-    const now = new Date().toISOString()
-    await setDoc(resultRef, { answers, score: sc, finishedAt: now }, { merge: true })
-  }
-
-  if (!questions.length) return <div>Carregando questões...</div>
-
-  if (!startedAt && !finished) {
+  if(finished){
     return (
-      <div className='max-w-3xl mx-auto'>
-        <h2 className='text-xl font-bold mb-4'>Prova ENEM — 6 horas</h2>
-        <p className='mb-4'>Você tem 6 horas para concluir a prova. Ao iniciar, o tempo começa a contar e é salvo no servidor.</p>
-        <button className='px-4 py-2 bg-blue-600 text-white rounded' onClick={handleStart}>Iniciar prova</button>
-      </div>
-    )
-  }
-
-  if (finished) {
-    return (
-      <div className='max-w-3xl mx-auto'>
-        <h2 className='text-xl font-bold mb-4'>Resultado</h2>
-        <div className='mb-4'>Pontuação: <span className='font-bold'>{score}</span></div>
-        <div className='space-y-4'>
-          {questions.map((q, idx) => {
-            const chosen = answers[q.id]
+      <div className="p-4 max-w-3xl mx-auto">
+        <h1 className="text-2xl font-bold mb-2">Resultado</h1>
+        <p>Pontuação: {results.score} / {results.total}</p>
+        <h2 className="text-xl font-semibold mt-4">Gabarito</h2>
+        <ul>
+          {questions.map(q=>{
+            const userAns = results.answers[q.id];
             return (
-              <div key={q.id} className='p-3 bg-white rounded shadow'>
-                <div className='font-semibold'>Q{idx+1}. {q.text}</div>
-                <div className='mt-2 space-y-1'>
-                  {['A','B','C','D','E'].map(k => {
-                    const isCorrect = q.correct === k
-                    const isChosen = chosen === k
-                    const base = 'p-2 rounded'
-                    const cls = isCorrect ? 'bg-green-100 border-l-4 border-green-600' : (isChosen && !isCorrect ? 'bg-red-100 border-l-4 border-red-600' : 'bg-gray-50')
-                    return (
-                      <div key={k} className={`${base} ${cls}`}>
-                        <strong>{k}.</strong> {q.options?.[k]}
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
+              <li key={q.id} className="mb-2 border p-2 rounded">
+                <p>{q.text}</p>
+                {q.imageBase64 && <img src={q.imageBase64} className="my-2 max-w-xs rounded" />}
+                {['A','B','C','D','E'].map(k=>{
+                  const v = q.options[k];
+                  const isCorrect = q.correct===k;
+                  const isUser = userAns===k;
+                  let color='bg-gray-100';
+                  if(isCorrect) color='bg-green-200';
+                  if(isUser && !isCorrect) color='bg-red-200';
+                  return <div key={k} className={`p-1 ${color}`}>{k}: {v}</div>
+                })}
+              </li>
             )
           })}
-        </div>
+        </ul>
       </div>
     )
   }
 
-  const q = questions[current]
-  const remHours = Math.floor(remaining / (1000*60*60))
-  const remMinutes = Math.floor((remaining % (1000*60*60))/(1000*60))
-  const remSeconds = Math.floor((remaining % (1000*60))/(1000))
+  const q = questions[current];
 
   return (
-    <div className='max-w-4xl mx-auto'>
-      <div className='flex justify-between items-center mb-4'>
-        <h2 className='text-xl font-bold'>Prova em andamento</h2>
-        <div className='text-right'>Tempo restante:<div className='font-mono text-lg'>{`${String(remHours).padStart(2,'0')}:${String(remMinutes).padStart(2,'0')}:${String(remSeconds).padStart(2,'0')}`}</div></div>
+    <div className="p-4 max-w-3xl mx-auto">
+      <h1 className="text-xl font-bold mb-2">Prova - Tempo restante: {formatTime(remaining)}</h1>
+      <p className="mb-2">{current+1} / {questions.length}</p>
+      <p className="mb-2">{q.text}</p>
+      {q.imageBase64 && <img src={q.imageBase64} className="my-2 max-w-xs rounded" />}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-4">
+        {['A','B','C','D','E'].map(k=>{
+          const v = q.options[k];
+          return (
+            <button 
+              key={k} 
+              onClick={()=>handleAnswer(k)}
+              className={`border p-2 ${answers[q.id]===k?'bg-blue-200':''}`}
+            >
+              {k}: {v}
+            </button>
+          )
+        })}
       </div>
-
-      <div className='bg-white p-4 rounded shadow'>
-        <div className='font-semibold mb-2'>Questão {current+1} de {questions.length}</div>
-        <div className='mb-4'>{q.text}</div>
-        <div className='space-y-2'>
-          {['A','B','C','D','E'].map(k => (
-            <label key={k} className={`block p-2 border rounded cursor-pointer ${answers[q.id]===k ? 'bg-gray-100' : ''}`}>
-              <input type='radio' name={q.id} checked={answers[q.id]===k} onChange={() => handleSelect(q.id, k)} className='mr-2' />
-              <strong>{k}.</strong> {q.options?.[k]}
-            </label>
-          ))}
-        </div>
-
-        <div className='mt-4 flex gap-2'>
-          <button onClick={() => goto(current-1)} disabled={current===0} className='px-3 py-1 border rounded disabled:opacity-50'>Anterior</button>
-          <button onClick={() => goto(current+1)} disabled={current===questions.length-1} className='px-3 py-1 border rounded disabled:opacity-50'>Próxima</button>
-          <div className='flex-1' />
-          <button onClick={() => handleSubmit(false)} className='px-4 py-2 bg-green-600 text-white rounded'>Concluir prova</button>
-        </div>
-      </div>
-
-      <div className='mt-4'>
-        <h4 className='font-semibold'>Navegação rápida</h4>
-        <div className='flex gap-2 flex-wrap mt-2'>
-          {questions.map((_, i) => (
-            <button key={i} onClick={() => goto(i)} className={`w-10 h-10 rounded ${i===current ? 'bg-blue-600 text-white' : 'bg-gray-200'}`}>{i+1}</button>
-          ))}
-        </div>
+      <div className="flex justify-between">
+        <button onClick={()=>setCurrent(c=>Math.max(c-1,0))} className="bg-gray-300 px-4 py-2 rounded">Anterior</button>
+        {current<questions.length-1 
+          ? <button onClick={()=>setCurrent(c=>c+1)} className="bg-gray-300 px-4 py-2 rounded">Próxima</button>
+          : <button onClick={handleFinish} className="bg-green-500 text-white px-4 py-2 rounded">Concluir prova</button>
+        }
       </div>
     </div>
-  )
+  );
 }
