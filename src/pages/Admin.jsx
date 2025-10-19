@@ -13,10 +13,8 @@ import {
 
 export default function Admin() {
   // --- Estados de UI ---
-  // currentExam controla qual prova estamos editando. Se null, mostra o dashboard.
-  const [currentExam, setCurrentExam] = useState(null); // Ex: { name: 'Enem 1', day: 'Dia 1' }
-  // viewMode controla se estamos vendo o dashboard, ou a tela de resultados.
-  const [viewMode, setViewMode] = useState('dashboard'); // 'dashboard' | 'results'
+  const [currentExam, setCurrentExam] = useState(null); 
+  const [viewMode, setViewMode] = useState('dashboard'); // 'dashboard' | 'results' | 'resultDetails'
 
   // --- Estados do Formulário (para criar/editar) ---
   const [text, setText] = useState('');
@@ -31,10 +29,13 @@ export default function Admin() {
   const [newExamDay, setNewExamDay] = useState('');
 
   // --- Estados de Dados ---
-  const [questions, setQuestions] = useState([]); // Questões da prova *selecionada*
-  const [provas, setProvas] = useState([]); // Lista de provas *publicadas*
-  const [resultsList, setResultsList] = useState([]); // Lista de *todos* os resultados
-  const [selectedResults, setSelectedResults] = useState([]); // Resultados da prova *selecionada*
+  const [questions, setQuestions] = useState([]); 
+  const [provas, setProvas] = useState([]); 
+  const [resultsList, setResultsList] = useState([]); 
+  
+  const [selectedResults, setSelectedResults] = useState([]); 
+  const [detailedResult, setDetailedResult] = useState(null); 
+  const [currentExamQuestions, setCurrentExamQuestions] = useState([]); 
 
   const THEMES = ["Linguagens","Ciências Humanas","Ciências da Natureza","Matemática"];
   const SUGGESTED_QUESTIONS_BY_DAY = {
@@ -44,24 +45,23 @@ export default function Admin() {
 
   // --- Efeitos (Hooks) ---
 
-  // Busca provas publicadas e todos os resultados no início
   useEffect(() => {
     async function fetchProvas() {
       const snap = await getDocs(collection(db, 'provas'));
       setProvas(snap.docs.map(d=>({id:d.id,...d.data()})));
     }
     async function fetchResults() {
-      const snap = await getDocs(collection(db, 'results'));
+      const q = query(collection(db, 'results'), orderBy('finishedAt', 'desc'));
+      const snap = await getDocs(q);
       setResultsList(snap.docs.map(d=>({id:d.id,...d.data()})));
     }
     fetchProvas();
     fetchResults();
   }, []);
 
-  // Busca as questões *apenas* quando uma prova é selecionada para edição
   useEffect(() => {
     if (!currentExam) {
-      setQuestions([]); // Limpa as questões se nenhuma prova estiver selecionada
+      setQuestions([]); 
       return;
     }
 
@@ -69,7 +69,6 @@ export default function Admin() {
       try {
         const { name, day } = currentExam;
         const colRef = collection(db, 'exams', name, 'days', day, 'questions');
-        // Ordena pela data de criação
         const q = query(colRef, orderBy('createdAt', 'asc')); 
         const snap = await getDocs(q);
         setQuestions(snap.docs.map(d=>({id:d.id,...d.data()})));
@@ -78,7 +77,7 @@ export default function Admin() {
       }
     }
     fetchQuestions();
-  }, [currentExam]); // Depende apenas da prova selecionada
+  }, [currentExam]); 
 
   
   // --- Funções de CRUD (Questões) ---
@@ -104,7 +103,7 @@ export default function Admin() {
       const { name, day } = currentExam;
       const colRef = collection(db, 'exams', name, 'days', day, 'questions');
       
-      const newDoc = await addDoc(colRef,{
+      const docRef = await addDoc(colRef,{
         text,
         options,
         correct,
@@ -113,7 +112,6 @@ export default function Admin() {
         createdAt: serverTimestamp()
       });
 
-      // Limpa o formulário
       setText('');
       setOptions({A:'',B:'',C:'',D:'',E:''});
       setCorrect('A');
@@ -121,17 +119,15 @@ export default function Admin() {
       setPreviewURL('');
       setTema('');
       
-      // Atualiza a lista de questões localmente para não recarregar do DB
-      // Adiciona o ID e um timestamp 'fake' para ordenação, ou apenas recarrega
       setQuestions(prev => [...prev, {
-        id: newDoc.id, 
+        id: docRef.id, 
         text, options, correct, tema, imageBase64: imageBase64||null, 
-        createdAt: { seconds: Date.now()/1000 } // Simula timestamp para ordenação
+        createdAt: { seconds: Date.now()/1000 } 
       }]);
 
     } catch(err){
       console.error(err);
-      alert("Erro ao adicionar questão. Verifique suas permissões.");
+      alert("Erro ao adicionar questão.");
     }
   }
 
@@ -142,7 +138,7 @@ export default function Admin() {
     try {
       const { name, day } = currentExam;
       await deleteDoc(doc(db, 'exams', name, 'days', day, 'questions', questionId));
-      setQuestions(prev=>prev.filter(q=>q.id!==questionId)); // Atualiza localmente
+      setQuestions(prev=>prev.filter(q=>q.id!==questionId)); 
     } catch(err){
       console.error(err);
       alert("Erro ao deletar questão.");
@@ -151,52 +147,42 @@ export default function Admin() {
 
   // --- Funções de Gerenciamento (Provas) ---
 
-  // Esta função agora "Publica" ou "Atualiza" a prova na coleção 'provas'
   async function handlePublishProva() {
     if(!currentExam) return alert("Nenhuma prova selecionada");
     if(questions.length === 0) return alert("Adicione questões antes de publicar");
 
     try {
       const { name, day } = currentExam;
-      
-      // Tentamos achar uma prova *publicada* com esse nome e dia
       const existingProva = provas.find(p => p.name === name && p.day === day);
-      
       const provaRef = existingProva 
-        ? doc(db, 'provas', existingProva.id) // Atualiza a existente
-        : doc(collection(db, 'provas')); // Cria uma nova
+        ? doc(db, 'provas', existingProva.id) 
+        : doc(collection(db, 'provas')); 
 
       await setDoc(provaRef, {
         name,
         day,
-        // Note: O 'questions' aqui é usado pelo seu código original.
-        // O Student.js ignora isso e busca da coleção 'exams', o que é bom.
-        // Vamos manter assim para consistência.
-        questions: questions.map(q => q.id), // Apenas IDs, ou a lista inteira se preferir
         questionCount: questions.length,
         updatedAt: serverTimestamp()
-      }, { merge: true }); // Merge true para não sobrescrever createdAt se existir
+      }, { merge: true }); 
 
       alert("Prova publicada/atualizada com sucesso!");
       
-      // Atualiza a lista de provas localmente
       if (!existingProva) {
         setProvas(prev => [...prev, { id: provaRef.id, name, day, questionCount: questions.length }]);
       }
       
-      setCurrentExam(null); // Volta para o dashboard
+      setCurrentExam(null);
     } catch(err){
       console.error(err);
-      alert("Erro ao publicar a prova. Verifique permissões.");
+      alert("Erro ao publicar a prova.");
     }
   }
 
-  // Despublica a prova (remove da lista 'provas')
   async function handleDeleteProva(provaId) {
-    if(!confirm("Deseja realmente despublicar esta prova? Os alunos não poderão mais vê-la. (As questões NÃO serão apagadas).")) return;
+    if(!confirm("Deseja realmente despublicar esta prova? (As questões NÃO serão apagadas).")) return;
     try {
       await deleteDoc(doc(db, 'provas', provaId));
-      setProvas(prev => prev.filter(p => p.id !== provaId)); // Atualiza localmente
+      setProvas(prev => prev.filter(p => p.id !== provaId));
       alert("Prova despublicada.");
     } catch (err) {
       console.error(err);
@@ -204,14 +190,62 @@ export default function Admin() {
     }
   }
 
-  // Mostra a tela de resultados
-  function handleShowResults(provaId) {
+  // --- Funções de Resultados ---
+
+  async function handleShowResults(provaId) {
+    const prova = provas.find(p => p.id === provaId);
+    if (!prova) return alert("Prova não encontrada.");
+
     const results = resultsList.filter(r => r.provaId === provaId);
     setSelectedResults(results);
+
+    try {
+      const colRef = collection(db, 'exams', prova.name, 'days', prova.day, 'questions');
+      const q = query(colRef, orderBy('createdAt', 'asc')); 
+      const snap = await getDocs(q);
+      const fetchedQuestions = snap.docs.map(d=>({id:d.id,...d.data()}));
+      setCurrentExamQuestions(fetchedQuestions);
+    } catch (err) {
+      console.error("Erro ao buscar questões da prova:", err);
+      setCurrentExamQuestions([]);
+    }
     setViewMode('results');
   }
 
-  // --- Renderização ---
+  function showResultDetails(result) {
+    setDetailedResult(result);
+    setViewMode('resultDetails');
+  }
+
+  // --- NOVA FUNÇÃO DE RESET ---
+  async function handleResetProvaAluno() {
+    if (!detailedResult) return alert("Nenhum resultado de aluno selecionado.");
+
+    const resultId = detailedResult.id;
+    const alunoName = detailedResult.name;
+
+    if (!confirm(`Deseja realmente resetar a prova de ${alunoName}? O aluno poderá refazer a prova.`)) return;
+
+    try {
+      // 1. Deletar o documento do resultado
+      await deleteDoc(doc(db, 'results', resultId));
+
+      // 2. Atualizar os estados locais para refletir a mudança
+      setResultsList(prev => prev.filter(r => r.id !== resultId));
+      setSelectedResults(prev => prev.filter(r => r.id !== resultId));
+
+      // 3. Voltar para a tela de lista de resultados
+      setViewMode('results');
+      setDetailedResult(null); // Limpar o resultado detalhado
+
+      alert(`Prova de ${alunoName} resetada com sucesso.`);
+    } catch (err) {
+      console.error("Erro ao resetar prova:", err);
+      alert("Erro ao resetar prova. Verifique o console.");
+    }
+  }
+
+  // --- RENDERIZAÇÃO ---
 
   // 1. Tela de Resultados
   if (viewMode === 'results') {
@@ -226,10 +260,18 @@ export default function Admin() {
         ) : (
           <ul className="divide-y divide-gray-200">
             {selectedResults.map(r => (
-              <li key={r.id} className="py-3">
-                <p className="font-semibold">{r.name} ({r.email})</p>
-                <p>Pontuação: <span className="font-bold">{r.score} / {r.total}</span></p>
-                <p>Data: {new Date(r.finishedAt?.seconds * 1000).toLocaleString()}</p>
+              <li key={r.id} className="py-3 flex flex-col md:flex-row justify-between items-start md:items-center">
+                <div>
+                  <p className="font-semibold">{r.name} ({r.email})</p>
+                  <p>Pontuação: <span className="font-bold">{r.score} / {r.total}</span></p>
+                  {r.finishedAt && <p className="text-sm text-gray-600">Data: {new Date(r.finishedAt.seconds * 1000).toLocaleString()}</p>}
+                </div>
+                <button 
+                  onClick={() => showResultDetails(r)}
+                  className="mt-2 md:mt-0 bg-blue-500 text-white px-3 py-1 rounded text-sm"
+                >
+                  Ver Detalhes
+                </button>
               </li>
             ))}
           </ul>
@@ -237,6 +279,55 @@ export default function Admin() {
       </div>
     );
   }
+
+  // 1.5. TELA DE DETALHES (Modificada)
+  if (viewMode === 'resultDetails') {
+    if (!detailedResult || !currentExamQuestions) {
+      return <div className="p-6">Carregando...</div>;
+    }
+
+    return (
+      <div className="p-6 max-w-lg mx-auto">
+        <button onClick={() => setViewMode('results')} className="mb-4 bg-gray-500 text-white px-4 py-2 rounded">
+          &larr; Voltar para Resultados
+        </button>
+        <h2 className="text-2xl font-bold mb-2">Detalhes de {detailedResult.name}</h2>
+        <p className="text-xl mb-4">Pontuação: <span className="font-bold">{detailedResult.score} / {detailedResult.total}</span></p>
+        
+        <div className="mb-6">
+          <h3 className="text-lg font-semibold mb-3 border-b pb-2">Gabarito do Aluno</h3>
+          <ul className="divide-y divide-gray-200">
+            {currentExamQuestions.map((q, index) => {
+              const userAnswer = detailedResult.answers[q.id];
+              const isCorrect = userAnswer === q.correct;
+              return (
+                <li key={q.id} className={`p-3 ${isCorrect ? 'bg-green-50' : 'bg-red-50'}`}>
+                  <p className="font-semibold">{index + 1}. {q.text}</p>
+                  <p>Resposta do Aluno: <span className="font-bold">{userAnswer || '(Em branco)'}</span></p>
+                  <p>Resposta Correta: <span className="font-bold">{q.correct}</span></p>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+
+        {/* --- NOVO BOTÃO DE RESET --- */}
+        <div className="mt-8 border-t-2 border-red-300 pt-4">
+          <button
+            onClick={handleResetProvaAluno}
+            className="w-full bg-red-600 text-white px-4 py-2 rounded font-bold hover:bg-red-700"
+          >
+            Resetar Prova deste Aluno
+          </button>
+          <p className="text-sm text-gray-600 mt-2 text-center">
+            Isso excluirá o resultado e permitirá que o aluno refaça a prova.
+          </p>
+        </div>
+        
+      </div>
+    );
+  }
+
 
   // 2. Tela de Edição/Criação de Questões
   if (currentExam) {
@@ -366,9 +457,9 @@ export default function Admin() {
               <li key={p.id} className="py-3 flex flex-col md:flex-row justify-between items-start md:items-center">
                 <div>
                   <p className="text-lg font-semibold">{p.name} - {p.day}</p>
-                  <p className="text-sm text-gray-500">ID: {p.id}</p>
+                  <p className="text-sm text-gray-500">Questões: {p.questionCount || 'N/A'}</p>
                 </div>
-                <div className="flex gap-2 mt-2 md:mt-0">
+                <div className="flex flex-wrap gap-2 mt-2 md:mt-0">
                   <button 
                     onClick={() => setCurrentExam({ name: p.name, day: p.day })} 
                     className="bg-yellow-500 text-white px-3 py-1 rounded text-sm"
