@@ -1,143 +1,138 @@
-import React, { useState, useEffect } from 'react';
-import { db, auth, serverTimestamp } from '../firebase';
-import { collection, getDocs, doc, setDoc, getDoc } from 'firebase/firestore';
+import React, { useEffect, useState } from 'react';
+import { auth, db } from '../firebase';
+import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
+import { collection, doc, getDocs, setDoc, serverTimestamp } from 'firebase/firestore';
 
-const EXAM_DURATION_MS = 6*60*60*1000; // 6 horas
+const GOOGLE_PROVIDER = new GoogleAuthProvider();
 
 export default function Student() {
+  const [user, setUser] = useState(null);
+  const [provas, setProvas] = useState([]);
+  const [selectedProva, setSelectedProva] = useState(null);
   const [questions, setQuestions] = useState([]);
-  const [current, setCurrent] = useState(0);
+  const [currentIndex, setCurrentIndex] = useState(0);
   const [answers, setAnswers] = useState({});
-  const [remaining, setRemaining] = useState(EXAM_DURATION_MS);
   const [finished, setFinished] = useState(false);
-  const [results, setResults] = useState(null);
 
-  // Fetch questions
+  // Login automático se já autenticado
   useEffect(() => {
-    async function fetchQuestions() {
-      const snap = await getDocs(collection(db, 'questions'));
-      setQuestions(snap.docs.map(d => ({id:d.id, ...d.data()})));
-    }
-    fetchQuestions();
+    auth.onAuthStateChanged(u => {
+      if (u) setUser(u);
+    });
   }, []);
 
-  // Start exam timer
+  // Buscar provas criadas
   useEffect(() => {
-    async function initTimer() {
-      const uid = auth.currentUser.uid;
-      const docRef = doc(db, 'results', uid);
-      let snap = await getDoc(docRef);
-      let startedAtMs;
-
-      // Se já existe startedAt válido, usa ele
-      if(snap.exists() && snap.data().startedAt && typeof snap.data().startedAt.toMillis === 'function'){
-        startedAtMs = snap.data().startedAt.toMillis();
-      } else {
-        // Cria startedAt no servidor
-        await setDoc(docRef, { studentId: uid, startedAt: serverTimestamp() }, { merge: true });
-        snap = await getDoc(docRef);
-        startedAtMs = snap.data().startedAt.toMillis();
-      }
-
-      const interval = setInterval(() => {
-        const elapsed = Date.now() - startedAtMs;
-        const rem = Math.max(EXAM_DURATION_MS - elapsed, 0);
-        setRemaining(rem);
-        if(rem <= 0){
-          clearInterval(interval);
-          handleFinish();
-        }
-      }, 1000);
+    async function fetchProvas() {
+      const snap = await getDocs(collection(db, 'provas'));
+      setProvas(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     }
-    initTimer();
+    fetchProvas();
   }, []);
 
-  function formatTime(ms){
-    const h = Math.floor(ms/3600000);
-    const m = Math.floor((ms%3600000)/60000);
-    const s = Math.floor((ms%60000)/1000);
-    return `${h}h ${m}m ${s}s`;
+  async function handleLogin() {
+    const result = await signInWithPopup(auth, GOOGLE_PROVIDER);
+    setUser(result.user);
   }
 
-  function handleAnswer(option){
-    setAnswers({...answers, [questions[current].id]: option});
+  async function startProva(prova) {
+    setSelectedProva(prova);
+    const snap = await getDocs(collection(db, `exams/${prova.name}/days/${prova.day}/questions`));
+    const sorted = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+                            .sort((a,b) => a.createdAt?.seconds - b.createdAt?.seconds);
+    setQuestions(sorted);
+
+    // Verificar se já fez a prova
+    const resDoc = doc(db, 'results', `${auth.currentUser.uid}-${prova.id}`);
+    const resSnap = await resDoc.get?.();
+    if (resSnap?.exists) {
+      setFinished(true);
+      setAnswers(resSnap.data().answers);
+    }
   }
 
-  function handleFinish(){
-    const score = questions.reduce((acc,q)=>acc + (answers[q.id]===q.correct?1:0),0);
-    setResults({score,total:questions.length, answers});
-    setFinished(true);
+  function handleAnswer(option) {
+    const qid = questions[currentIndex].id;
+    setAnswers(prev => ({ ...prev, [qid]: option }));
+  }
 
-    // Salva no Firestore
-    setDoc(doc(db,'results',auth.currentUser.uid),{
+  async function finishExam() {
+    if (!user || !selectedProva) return;
+    let score = 0;
+    questions.forEach(q => { if (answers[q.id] === q.correct) score++; });
+
+    const resultRef = doc(db, 'results', `${user.uid}-${selectedProva.id}`);
+    await setDoc(resultRef, {
+      name: user.displayName,
+      email: user.email,
+      provaId: selectedProva.id,
       answers,
-      finished:true,
       score,
-      finishedAt: serverTimestamp()
-    }, {merge:true});
+      total: questions.length,
+      startedAt: serverTimestamp(),
+      finishedAt: serverTimestamp(),
+    });
+
+    setFinished(true);
   }
 
-  if(questions.length===0) return <p>Carregando questões...</p>;
-
-  if(finished){
+  if (!user) {
     return (
-      <div className="p-4 max-w-3xl mx-auto">
-        <h1 className="text-2xl font-bold mb-2">Resultado</h1>
-        <p>Pontuação: {results.score} / {results.total}</p>
-        <h2 className="text-xl font-semibold mt-4">Gabarito</h2>
-        <ul>
-          {questions.map(q=>{
-            const userAns = results.answers[q.id];
-            return (
-              <li key={q.id} className="mb-2 border p-2 rounded">
-                <p>{q.text}</p>
-                {q.imageBase64 && <img src={q.imageBase64} className="my-2 max-w-xs rounded" />}
-                {['A','B','C','D','E'].map(k=>{
-                  const v = q.options[k];
-                  const isCorrect = q.correct===k;
-                  const isUser = userAns===k;
-                  let color='bg-gray-100';
-                  if(isCorrect) color='bg-green-200';
-                  if(isUser && !isCorrect) color='bg-red-200';
-                  return <div key={k} className={`p-1 ${color}`}>{k}: {v}</div>
-                })}
-              </li>
-            )
-          })}
-        </ul>
+      <div className="p-6 max-w-md mx-auto text-center">
+        <h2 className="text-xl font-bold mb-4">Login com Google para iniciar</h2>
+        <button className="bg-blue-500 text-white px-4 py-2 rounded" onClick={handleLogin}>Login com Google</button>
       </div>
-    )
+    );
   }
 
-  const q = questions[current];
+  if (!selectedProva) {
+    return (
+      <div className="p-6 max-w-md mx-auto">
+        <h2 className="text-xl font-bold mb-4">Selecione a prova</h2>
+        {provas.map(p => (
+          <button key={p.id} className="block w-full mb-2 p-2 border rounded bg-gray-200"
+            onClick={() => startProva(p)}>
+            {p.name} - {p.day} {p.finished ? '(Concluída)' : ''}
+          </button>
+        ))}
+      </div>
+    );
+  }
+
+  if (finished) {
+    return (
+      <div className="p-6 max-w-md mx-auto text-center">
+        <h2 className="text-xl font-bold mb-4">Prova concluída!</h2>
+        <p>Pontuação: {Object.keys(answers).filter(id => questions.find(q => q.id===id && answers[id]===q.correct)).length} / {questions.length}</p>
+        <p>Solicite ao professor caso queira refazer a prova.</p>
+      </div>
+    );
+  }
+
+  const q = questions[currentIndex];
 
   return (
-    <div className="p-4 max-w-3xl mx-auto">
-      <h1 className="text-xl font-bold mb-2">Prova - Tempo restante: {formatTime(remaining)}</h1>
-      <p className="mb-2">{current+1} / {questions.length}</p>
-      <p className="mb-2">{q.text}</p>
-      {q.imageBase64 && <img src={q.imageBase64} className="my-2 max-w-xs rounded" />}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-4">
-        {['A','B','C','D','E'].map(k=>{
-          const v = q.options[k];
-          return (
-            <button 
-              key={k} 
-              onClick={()=>handleAnswer(k)}
-              className={`border p-2 ${answers[q.id]===k?'bg-blue-200':''}`}
-            >
-              {k}: {v}
-            </button>
-          )
-        })}
-      </div>
-      <div className="flex justify-between">
-        <button onClick={()=>setCurrent(c=>Math.max(c-1,0))} className="bg-gray-300 px-4 py-2 rounded">Anterior</button>
-        {current<questions.length-1 
-          ? <button onClick={()=>setCurrent(c=>c+1)} className="bg-gray-300 px-4 py-2 rounded">Próxima</button>
-          : <button onClick={handleFinish} className="bg-green-500 text-white px-4 py-2 rounded">Concluir prova</button>
-        }
-      </div>
+    <div className="p-6 max-w-3xl mx-auto">
+      <h2 className="font-bold mb-2">{selectedProva.name} - {selectedProva.day}</h2>
+      {q && (
+        <div className="mb-6 border p-4 rounded">
+          <p className="font-semibold mb-2">{currentIndex + 1}. {q.text}</p>
+          {q.imageBase64 && <img src={q.imageBase64} className="my-2 max-w-xs rounded" />}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+            {['A','B','C','D','E'].map(l => (
+              <button key={l} className={`border p-2 rounded ${answers[q.id]===l?'bg-blue-200':'bg-gray-100'}`}
+                      onClick={() => handleAnswer(l)}>
+                {l}: {q.options[l]}
+              </button>
+            ))}
+          </div>
+          <div className="mt-2 flex justify-between">
+            <button onClick={()=>setCurrentIndex(i=>Math.max(0,i-1))} disabled={currentIndex===0} className="bg-gray-300 px-3 py-1 rounded">Anterior</button>
+            <button onClick={()=>setCurrentIndex(i=>Math.min(questions.length-1,i+1))} disabled={currentIndex===questions.length-1} className="bg-gray-300 px-3 py-1 rounded">Próxima</button>
+            <button onClick={finishExam} className="bg-green-500 text-white px-3 py-1 rounded">Concluir Prova</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
