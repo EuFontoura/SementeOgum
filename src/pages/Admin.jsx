@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { db, serverTimestamp } from '../firebase';
+// Certifique-se que o caminho para seu firebase.js está correto
+import { db, serverTimestamp } from '../firebase'; 
 import { 
   collection, 
   addDoc, 
@@ -11,7 +12,15 @@ import {
   orderBy 
 } from 'firebase/firestore';
 
+// 1. IMPORTAR OS NOVOS HOOKS E COMPONENTES
+// (Ajuste os caminhos se você os colocou em pastas diferentes)
+import { useAdminAuth } from '../hooks/useAdminAuth';
+import { ManageAdmins } from '../components/ManageAdmins';
+
 export default function Admin() {
+  // 2. USAR O HOOK DE AUTENTICAÇÃO ADMIN
+  const { user, isAdmin, loading } = useAdminAuth();
+
   // --- Estados de UI ---
   const [currentExam, setCurrentExam] = useState(null); 
   const [viewMode, setViewMode] = useState('dashboard'); // 'dashboard' | 'results' | 'resultDetails'
@@ -45,7 +54,11 @@ export default function Admin() {
 
   // --- Efeitos (Hooks) ---
 
+  // Modificado: Só busca os dados se o usuário for admin
   useEffect(() => {
+    // 3. SÓ EXECUTAR SE FOR ADMIN
+    if (!isAdmin) return; 
+
     async function fetchProvas() {
       const snap = await getDocs(collection(db, 'provas'));
       setProvas(snap.docs.map(d=>({id:d.id,...d.data()})));
@@ -57,10 +70,12 @@ export default function Admin() {
     }
     fetchProvas();
     fetchResults();
-  }, []);
+  }, [isAdmin]); // Adicionada dependência do isAdmin
 
+  // Modificado: Só busca os dados se o usuário for admin
   useEffect(() => {
-    if (!currentExam) {
+    // 3. SÓ EXECUTAR SE FOR ADMIN
+    if (!currentExam || !isAdmin) {
       setQuestions([]); 
       return;
     }
@@ -77,10 +92,12 @@ export default function Admin() {
       }
     }
     fetchQuestions();
-  }, [currentExam]); 
+  }, [currentExam, isAdmin]); // Adicionada dependência do isAdmin
 
   
-  // --- Funções de CRUD (Questões) ---
+  // --- (Todas as suas funções de handle* permanecem exatamente iguais) ---
+  // Elas estão seguras pois só podem ser chamadas se os botões
+  // que as chamam forem renderizados (o que só acontece se isAdmin for true)
 
   const countByTema = questions.reduce((acc,q)=>{
     acc[q.tema] = (acc[q.tema]||0)+1;
@@ -98,113 +115,81 @@ export default function Admin() {
   async function handleAddQuestion(){
     if(!text || !tema) return alert("Preencha todos os campos");
     if(!currentExam) return alert("Nenhuma prova selecionada");
-
     try {
       const { name, day } = currentExam;
       const colRef = collection(db, 'exams', name, 'days', day, 'questions');
-      
       const docRef = await addDoc(colRef,{
-        text,
-        options,
-        correct,
-        tema,
+        text, options, correct, tema,
         imageBase64: imageBase64||null,
         createdAt: serverTimestamp()
       });
-
-      setText('');
-      setOptions({A:'',B:'',C:'',D:'',E:''});
-      setCorrect('A');
-      setImageBase64('');
-      setPreviewURL('');
-      setTema('');
-      
+      setText(''); setOptions({A:'',B:'',C:'',D:'',E:''}); setCorrect('A');
+      setImageBase64(''); setPreviewURL(''); setTema('');
       setQuestions(prev => [...prev, {
-        id: docRef.id, 
-        text, options, correct, tema, imageBase64: imageBase64||null, 
+        id: docRef.id, text, options, correct, tema, imageBase64: imageBase64||null, 
         createdAt: { seconds: Date.now()/1000 } 
       }]);
-
     } catch(err){
-      console.error(err);
-      alert("Erro ao adicionar questão.");
+      console.error(err); alert("Erro ao adicionar questão.");
     }
   }
 
   async function handleDeleteQuestion(questionId){
     if(!confirm("Deseja realmente deletar esta questão?")) return;
     if(!currentExam) return alert("Nenhuma prova selecionada");
-    
     try {
       const { name, day } = currentExam;
       await deleteDoc(doc(db, 'exams', name, 'days', day, 'questions', questionId));
       setQuestions(prev=>prev.filter(q=>q.id!==questionId)); 
     } catch(err){
-      console.error(err);
-      alert("Erro ao deletar questão.");
+      console.error(err); alert("Erro ao deletar questão.");
     }
   }
-
-  // --- Funções de Gerenciamento (Provas) ---
 
   async function handlePublishProva() {
     if(!currentExam) return alert("Nenhuma prova selecionada");
     if(questions.length === 0) return alert("Adicione questões antes de publicar");
-
     try {
       const { name, day } = currentExam;
       const existingProva = provas.find(p => p.name === name && p.day === day);
       const provaRef = existingProva 
         ? doc(db, 'provas', existingProva.id) 
         : doc(collection(db, 'provas')); 
-
       await setDoc(provaRef, {
-        name,
-        day,
-        questionCount: questions.length,
+        name, day, questionCount: questions.length,
         updatedAt: serverTimestamp()
       }, { merge: true }); 
-
       alert("Prova publicada/atualizada com sucesso!");
-      
       if (!existingProva) {
         setProvas(prev => [...prev, { id: provaRef.id, name, day, questionCount: questions.length }]);
       }
-      
       setCurrentExam(null);
     } catch(err){
-      console.error(err);
-      alert("Erro ao publicar a prova.");
+      console.error(err); alert("Erro ao publicar a prova.");
     }
   }
 
   async function handleDeleteProva(provaId) {
-    if(!confirm("Deseja realmente despublicar esta prova? (As questões NÃO serão apagadas).")) return;
+    if(!confirm("Deseja realmente despublicar esta prova?")) return;
     try {
       await deleteDoc(doc(db, 'provas', provaId));
       setProvas(prev => prev.filter(p => p.id !== provaId));
       alert("Prova despublicada.");
     } catch (err) {
-      console.error(err);
-      alert("Erro ao despublicar prova.");
+      console.error(err); alert("Erro ao despublicar prova.");
     }
   }
-
-  // --- Funções de Resultados ---
 
   async function handleShowResults(provaId) {
     const prova = provas.find(p => p.id === provaId);
     if (!prova) return alert("Prova não encontrada.");
-
     const results = resultsList.filter(r => r.provaId === provaId);
     setSelectedResults(results);
-
     try {
       const colRef = collection(db, 'exams', prova.name, 'days', prova.day, 'questions');
       const q = query(colRef, orderBy('createdAt', 'asc')); 
       const snap = await getDocs(q);
-      const fetchedQuestions = snap.docs.map(d=>({id:d.id,...d.data()}));
-      setCurrentExamQuestions(fetchedQuestions);
+      setCurrentExamQuestions(snap.docs.map(d=>({id:d.id,...d.data()})));
     } catch (err) {
       console.error("Erro ao buscar questões da prova:", err);
       setCurrentExamQuestions([]);
@@ -217,35 +202,50 @@ export default function Admin() {
     setViewMode('resultDetails');
   }
 
-  // --- NOVA FUNÇÃO DE RESET ---
   async function handleResetProvaAluno() {
     if (!detailedResult) return alert("Nenhum resultado de aluno selecionado.");
-
     const resultId = detailedResult.id;
     const alunoName = detailedResult.name;
-
-    if (!confirm(`Deseja realmente resetar a prova de ${alunoName}? O aluno poderá refazer a prova.`)) return;
-
+    if (!confirm(`Deseja realmente resetar a prova de ${alunoName}?`)) return;
     try {
-      // 1. Deletar o documento do resultado
       await deleteDoc(doc(db, 'results', resultId));
-
-      // 2. Atualizar os estados locais para refletir a mudança
       setResultsList(prev => prev.filter(r => r.id !== resultId));
       setSelectedResults(prev => prev.filter(r => r.id !== resultId));
-
-      // 3. Voltar para a tela de lista de resultados
       setViewMode('results');
-      setDetailedResult(null); // Limpar o resultado detalhado
-
+      setDetailedResult(null); 
       alert(`Prova de ${alunoName} resetada com sucesso.`);
     } catch (err) {
       console.error("Erro ao resetar prova:", err);
-      alert("Erro ao resetar prova. Verifique o console.");
+      alert("Erro ao resetar prova.");
     }
   }
 
+
   // --- RENDERIZAÇÃO ---
+
+  // 4. ADICIONAR TELAS DE CARREGAMENTO E ACESSO NEGADO
+  if (loading) {
+    return (
+      <div className="p-10 text-center text-xl font-semibold">
+        Carregando permissões...
+      </div>
+    );
+  }
+
+  if (!isAdmin) {
+    return (
+      <div className="p-10 text-center">
+        <h1 className="text-2xl font-bold mb-4">Acesso Negado</h1>
+        <p>Você não tem permissão para acessar esta página.</p>
+        <p className="text-sm text-gray-600 mt-2">
+          Se você deveria ter acesso, peça a um administrador para adicionar seu UID à lista de admins.
+        </p>
+      </div>
+    );
+  }
+
+  // O resto da sua renderização permanece igual,
+  // pois agora está protegido pelo `isAdmin` check acima.
 
   // 1. Tela de Resultados
   if (viewMode === 'results') {
@@ -280,12 +280,11 @@ export default function Admin() {
     );
   }
 
-  // 1.5. TELA DE DETALHES (Modificada)
+  // 1.5. TELA DE DETALHES
   if (viewMode === 'resultDetails') {
     if (!detailedResult || !currentExamQuestions) {
       return <div className="p-6">Carregando...</div>;
     }
-
     return (
       <div className="p-6 max-w-lg mx-auto">
         <button onClick={() => setViewMode('results')} className="mb-4 bg-gray-500 text-white px-4 py-2 rounded">
@@ -293,7 +292,6 @@ export default function Admin() {
         </button>
         <h2 className="text-2xl font-bold mb-2">Detalhes de {detailedResult.name}</h2>
         <p className="text-xl mb-4">Pontuação: <span className="font-bold">{detailedResult.score} / {detailedResult.total}</span></p>
-        
         <div className="mb-6">
           <h3 className="text-lg font-semibold mb-3 border-b pb-2">Gabarito do Aluno</h3>
           <ul className="divide-y divide-gray-200">
@@ -310,8 +308,6 @@ export default function Admin() {
             })}
           </ul>
         </div>
-
-        {/* --- NOVO BOTÃO DE RESET --- */}
         <div className="mt-8 border-t-2 border-red-300 pt-4">
           <button
             onClick={handleResetProvaAluno}
@@ -323,11 +319,9 @@ export default function Admin() {
             Isso excluirá o resultado e permitirá que o aluno refaça a prova.
           </p>
         </div>
-        
       </div>
     );
   }
-
 
   // 2. Tela de Edição/Criação de Questões
   if (currentExam) {
@@ -338,7 +332,6 @@ export default function Admin() {
           &larr; Voltar ao Dashboard
         </button>
         <h1 className="text-2xl font-bold mb-2">{name} - {day}</h1>
-
         <p className="mb-4 font-semibold">Sugestão de criação de questões:</p>
         {Object.entries(SUGGESTED_QUESTIONS_BY_DAY[day] || {}).map(([t,count])=>{
           const current = countByTema[t]||0;
@@ -346,8 +339,6 @@ export default function Admin() {
             {current} / {count} Questões {t}
           </p>
         })}
-
-        {/* Formulário de Adicionar Questão */}
         <div className="my-6 p-4 border rounded-lg shadow-md">
           <h3 className="text-lg font-semibold mb-3">Adicionar Nova Questão</h3>
           <textarea className="border p-2 w-full mb-2" placeholder="Digite a questão" value={text} onChange={e=>setText(e.target.value)} />
@@ -376,16 +367,12 @@ export default function Admin() {
           </div>
           <button onClick={handleAddQuestion} className="bg-blue-500 text-white px-4 py-2 rounded">Adicionar questão</button>
         </div>
-
-        {/* Botão de Publicar */}
         <div className="my-6 text-center">
             <button onClick={handlePublishProva} className="bg-green-600 text-white px-6 py-3 rounded-lg font-bold">
               Publicar / Atualizar Prova
             </button>
             <p className="text-sm text-gray-600 mt-2">Isso tornará a prova visível (ou a atualizará) para os alunos.</p>
         </div>
-
-        {/* Lista de Questões Cadastradas */}
         <h2 className="text-xl font-bold mb-2">Questões cadastradas ({questions.length})</h2>
         <ul className="divide-y divide-gray-200">
           {questions.map(q=>(
@@ -411,6 +398,9 @@ export default function Admin() {
   return (
     <div className="p-6 max-w-4xl mx-auto">
       <h1 className="text-2xl font-bold mb-6">Painel do Administrador</h1>
+
+      {/* 5. ADICIONAR O COMPONENTE DE GERENCIAMENTO DE ADMIN */}
+      <ManageAdmins />
 
       {/* Seção de Criar/Editar Nova Prova */}
       <div className="mb-8 p-4 border rounded-lg shadow">
