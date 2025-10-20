@@ -59,7 +59,7 @@ export function ManageAdmins({ isOpen, onClose }) {
           </svg>
         </button>
 
-        <h2 className="text-2xl font-bold mb-4 text-secondary-blue">Gerenciar Administradores</h2>
+        <h2 className="text-2xl font-bold mb-4 text-ogum-blue">Gerenciar Administradores</h2>
         <p className="text-sm text-slate-600 mb-6">
           Para promover um usuário a admin, peça a ele que se logue no site, vá ao 
           Firebase Console (Authentication), e lhe envie o UID dele.
@@ -71,21 +71,21 @@ export function ManageAdmins({ isOpen, onClose }) {
         <div className="flex flex-col gap-4">
           <input
             type="text"
-            className="border p-3 w-full rounded-lg ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-secondary-blue"
+            className="border p-3 w-full rounded-lg ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-ogum-blue"
             placeholder="Cole o UID do novo admin aqui"
             value={uid}
             onChange={e => setUid(e.target.value)}
           />
           <input
             type="text"
-            className="border p-3 w-full rounded-lg ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-secondary-blue"
+            className="border p-3 w-full rounded-lg ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-ogum-blue"
             placeholder="Nome (Opcional)"
             value={userName}
             onChange={e => setUserName(e.target.value)}
           />
         </div>
         <button
-          className="bg-secondary-blue text-white w-full px-5 py-3 rounded-lg font-semibold disabled:opacity-50 mt-6 shadow-lg hover:bg-opacity-80 transition-all cursor-pointer"
+          className="bg-ogum-blue text-white w-full px-5 py-3 rounded-lg font-semibold disabled:opacity-50 mt-6 shadow-lg hover:bg-opacity-80 transition-all cursor-pointer"
           onClick={handleMakeAdmin}
           disabled={loading}
         >
