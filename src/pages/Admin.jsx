@@ -338,7 +338,7 @@ export default function Admin() {
           </div>
           <div className="mb-4">
             <label className="text-slate-600">Imagem (opcional): </label>
-            <input type="file" accept="image/*" onChange={handleImageChange} className="text-sm" />
+            <input type="file" accept="image/*" onChange={handleImageChange} className="text-sm bg-ogum-green text-white p-2 rounded-2xl border-2 hover:cursor-pointer hover:border-ogum-blue" />
             {previewURL && <img src={previewURL} alt="Preview" className="my-3 max-w-xs rounded-lg shadow-sm" />}
           </div>
           <button onClick={handleAddQuestion} className="bg-ogum-blue text-white px-6 py-3 rounded-lg font-semibold shadow-lg hover:bg-opacity-80 transition-all cursor-pointer">Adicionar questão</button>
