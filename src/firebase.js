@@ -3,12 +3,12 @@ import { getAuth, GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
 import { getFirestore, serverTimestamp } from 'firebase/firestore';
 
 const firebaseConfig = {
-  apiKey: "AIzaSyDRrqOUwwJRWH_3Wd-1YJG60RbBiCrXPO8",
-  authDomain: "sementeogum.firebaseapp.com",
-  projectId: "sementeogum",
-  storageBucket: "sementeogum.firebasestorage.app",
-  messagingSenderId: "297958963395",
-  appId: "1:297958963395:web:3580b2903fd0d2bf6cca76"
+  apiKey: import.meta.env.VITE_API_KEY,
+  authDomain: import.meta.env.VITE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_APP_ID
 };
 
 const app = initializeApp(firebaseConfig);
@@ -19,5 +19,5 @@ export { serverTimestamp };
 
 
 export async function signInWithGoogle() {
-return signInWithPopup(auth, provider);
+  return signInWithPopup(auth, provider);
 }

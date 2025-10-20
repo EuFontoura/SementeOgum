@@ -215,7 +215,7 @@ export default function Student() {
       <div className="p-6 max-w-2xl mx-auto my-10">
         <div className="bg-white shadow-xl rounded-lg p-8 text-center">
           <h2 className="text-3xl font-bold text-ogum-green mb-4">Prova concluída!</h2>
-          <p className="text-center text-2xl mb-8">Pontuação: <span className="font-bold text-secondary-blue">{score} / {questions.length}</span></p>
+          <p className="text-center text-2xl mb-8">Pontuação: <span className="font-bold text-ogum-blue">{score} / {questions.length}</span></p>
         </div>
         
         <div className="mt-8">
@@ -265,11 +265,11 @@ export default function Student() {
                 key={l} 
                 className={`border-2 p-4 rounded-lg text-left transition-all duration-200 cursor-pointer
                             ${answers[q.id] === l 
-                              ? 'bg-blue-50 border-secondary-blue ring-2 ring-secondary-blue/30' 
-                              : 'bg-white border-slate-200 hover:border-secondary-blue'}`}
+                              ? 'bg-blue-50 border-ogum-blue ring-2 ring-ogum-blue/30' 
+                              : 'bg-white border-slate-200 hover:border-ogum-blue'}`}
                 onClick={() => handleAnswer(l)}
               >
-                <span className="font-bold mr-3 text-secondary-blue">{l})</span> 
+                <span className="font-bold mr-3 text-ogum-blue">{l})</span> 
                 <span className="text-slate-700">{q.options[l]}</span>
               </button>
             ))}
@@ -295,7 +295,7 @@ export default function Student() {
               <button 
                 onClick={() => setCurrentIndex(i => Math.min(questions.length - 1, i + 1))} 
                 disabled={currentIndex === questions.length - 1}
-                className="bg-secondary-blue text-white px-5 py-2 rounded-lg font-medium shadow-lg hover:bg-opacity-80 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer transition-colors"
+                className="bg-ogum-blue text-white px-5 py-2 rounded-lg font-medium shadow-lg hover:bg-opacity-80 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer transition-colors"
               >
                 Próxima
               </button>
