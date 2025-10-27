@@ -5,6 +5,7 @@ import { onAuthStateChanged, signOut } from 'firebase/auth'
 import Admin from './pages/Admin'
 import Student from './pages/Student'
 import { doc, getDoc, setDoc } from 'firebase/firestore'
+import logo from '../public/logo2.png'
 
 export default function App() {
   return (
@@ -60,9 +61,10 @@ function AuthGate() {
   return (
     <div className='min-h-screen flex items-center justify-center bg-slate-100 p-4'>
       <div className='bg-white shadow-xl rounded-lg p-10 w-full max-w-md text-center'>
-        <h1 className='text-4xl font-bold text-ogum-green mb-4'>
+      <img src={logo} alt="Logo" className='w-44 h-44 justify-center items-center flex m-auto'/>
+        {/* <h1 className='text-4xl font-bold text-ogum-green mb-4'>
           Semente de Ogum
-        </h1>
+        </h1> */}
         <p className='mb-8 text-slate-600'>
           Faça login com sua conta Google para acessar a plataforma.
         </p>
