@@ -29,6 +29,7 @@ export default function Student() {
   const [endTime, setEndTime] = useState(null); 
   const [timeLeftMs, setTimeLeftMs] = useState(0); 
   const [isTimerMinimized, setIsTimerMinimized] = useState(true); 
+  const [showIndex, setShowIndex] = useState(false);
 
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged(u => {
@@ -247,6 +248,10 @@ export default function Student() {
   const q = questions[currentIndex];
   const isUrgent = timeLeftMs > 0 && timeLeftMs <= URGENT_TIME_MS;
 
+  function toggleIndex() {
+    setShowIndex(prev => !prev);
+  }
+
   return (
     <div className="p-6 max-w-3xl mx-auto pb-24"> 
       <div className="flex justify-between items-center mb-6 sticky top-0 bg-white/80 backdrop-blur-sm py-4 z-10">
@@ -304,6 +309,46 @@ export default function Student() {
         </div>
       ) : (
         <p className="text-center text-slate-500 mt-10">Carregando questões...</p>
+      )}
+
+      <div
+        onClick={toggleIndex}
+        className="fixed bottom-0 left-0 m-4 bg-slate-800 text-white p-3 rounded-lg shadow-xl cursor-pointer hover:bg-slate-700 transition-all z-30"
+        title={showIndex ? "Fechar índice" : "Ver progresso"}
+      >
+        {showIndex ? (
+          <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        ) : (
+          <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h8m-8 6h16" />
+          </svg>
+        )}
+      </div>
+
+      {showIndex && (
+        <div className="fixed bottom-16 left-4 bg-white shadow-2xl border border-slate-200 rounded-xl p-4 w-48 z-30">
+          <h4 className="text-sm font-semibold text-slate-700 mb-2">Questões</h4>
+          <div className="grid grid-cols-5 gap-2">
+            {questions.map((qItem, i) => {
+              const isAnswered = !!answers[qItem.id];
+              const isCurrent = i === currentIndex;
+              return (
+                <button
+                  key={qItem.id}
+                  onClick={() => setCurrentIndex(i)}
+                  className={`w-8 h-8 rounded-full font-bold text-sm transition-all
+                    ${isCurrent ? 'bg-ogum-blue text-white' :
+                      isAnswered ? 'bg-ogum-green text-white' :
+                      'bg-slate-200 text-slate-700 hover:bg-slate-300'}`}
+                >
+                  {i + 1}
+                </button>
+              );
+            })}
+          </div>
+        </div>
       )}
 
       {endTime && (
