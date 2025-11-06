@@ -53,7 +53,7 @@ export default function Admin() {
       setProvas(snap.docs.map(d=>({id:d.id,...d.data()})));
     }
     async function fetchResults() {
-      const q = query(collection(db, 'results'), orderBy('finishedAt', 'desc'));
+      const q = query(collection(db, 'results'), orderBy('startedAt', 'desc'));
       const snap = await getDocs(q);
       setResultsList(snap.docs.map(d=>({id:d.id,...d.data()})));
     }
