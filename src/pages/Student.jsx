@@ -122,10 +122,6 @@ export default function Student() {
   const resDocRef = doc(db, 'results', `${user.uid}-${selectedProva.id}`);
   setDoc(resDocRef, { answers: updatedAnswers }, { merge: true });
 }
-    
-    const resDocRef = doc(db, 'results', `${user.uid}-${selectedProva.id}`);
-    setDoc(resDocRef, { answers: { [qid]: option } }, { merge: true });
-  }
 
   async function finishExam() {
     if (finished || !user || !selectedProva) return;
