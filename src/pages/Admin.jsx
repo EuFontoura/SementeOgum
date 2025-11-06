@@ -162,25 +162,26 @@ export default function Admin() {
   }
 
   async function handleShowResults(provaId) {
-    const prova = provas.find(p => p.id === provaId);
-    if (!prova) return alert("Prova não encontrada.");
-    const results = resultsList.filter(
-  r =>
-    r.name.toLowerCase() === prova.name.toLowerCase() &&
-    r.day.toLowerCase() === prova.day.toLowerCase()
+  const prova = provas.find(p => p.id === provaId);
+  if (!prova) return alert("Prova não encontrada.");
+
+  const results = resultsList.filter(
+  r => r.provaName === prova.name && r.provaDay === prova.day
 );
-    setSelectedResults(results);
-    try {
-      const colRef = collection(db, 'exams', prova.name, 'days', prova.day, 'questions');
-      const q = query(colRef, orderBy('createdAt', 'asc')); 
-      const snap = await getDocs(q);
-      setCurrentExamQuestions(snap.docs.map(d=>({id:d.id,...d.data()})));
-    } catch (err) {
-      console.error("Erro ao buscar questões da prova:", err);
-      setCurrentExamQuestions([]);
-    }
-    setViewMode('results');
+  setSelectedResults(results);
+
+  try {
+    const colRef = collection(db, 'exams', prova.name, 'days', prova.day, 'questions');
+    const q = query(colRef, orderBy('createdAt', 'asc')); 
+    const snap = await getDocs(q);
+    setCurrentExamQuestions(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+  } catch (err) {
+    console.error("Erro ao buscar questões da prova:", err);
+    setCurrentExamQuestions([]);
   }
+
+  setViewMode('results');
+}
 
   function showResultDetails(result) {
     setDetailedResult(result);
