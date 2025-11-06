@@ -165,7 +165,9 @@ export default function Admin() {
     const prova = provas.find(p => p.id === provaId);
     if (!prova) return alert("Prova não encontrada.");
     const results = resultsList.filter(
-  r => r.name === prova.name && r.day === prova.day
+  r =>
+    r.name.toLowerCase() === prova.name.toLowerCase() &&
+    r.day.toLowerCase() === prova.day.toLowerCase()
 );
     setSelectedResults(results);
     try {
