@@ -114,9 +114,14 @@ export default function Student() {
   }
 
   function handleAnswer(option) {
-    if (!user) return; 
-    const qid = questions[currentIndex].id;
-    setAnswers(prev => ({ ...prev, [qid]: option }));
+  if (!user) return; 
+  const qid = questions[currentIndex].id;
+  const updatedAnswers = { ...answers, [qid]: option };
+  setAnswers(updatedAnswers);
+
+  const resDocRef = doc(db, 'results', `${user.uid}-${selectedProva.id}`);
+  setDoc(resDocRef, { answers: updatedAnswers }, { merge: true });
+}
     
     const resDocRef = doc(db, 'results', `${user.uid}-${selectedProva.id}`);
     setDoc(resDocRef, { answers: { [qid]: option } }, { merge: true });
