@@ -164,7 +164,9 @@ export default function Admin() {
   async function handleShowResults(provaId) {
     const prova = provas.find(p => p.id === provaId);
     if (!prova) return alert("Prova não encontrada.");
-    const results = resultsList.filter(r => r.provaId === provaId);
+    const results = resultsList.filter(
+  r => r.name === prova.name && r.day === prova.day
+);
     setSelectedResults(results);
     try {
       const colRef = collection(db, 'exams', prova.name, 'days', prova.day, 'questions');
